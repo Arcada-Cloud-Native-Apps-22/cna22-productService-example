@@ -1,0 +1,188 @@
+# Welcome to Serverless!
+#
+# This file is the main config file for your service.
+# It's very minimal at this point and uses default values.
+# You can always add more config options for more control.
+# We've included some commented out config examples here.
+# Just uncomment any of them to get that config option.
+#
+# For full config options, check the docs:
+#    docs.serverless.com
+#
+# Happy Coding!
+
+service: cna22-productservice # OBS
+# app and org for use with dashboard.serverless.com
+#app: your-app-name
+#org: your-org-name
+
+# You can pin your service to only deploy with a specific Serverless version
+# Check out our docs for more details
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+  iam:
+    role: arn:aws:iam::612981859191:role/LabRole
+
+# you can overwrite defaults here
+  stage: dev
+#  region: us-east-1
+
+
+# you can add statements to the Lambda function's IAM Role here
+#  iam:
+#    role:
+#      statements:
+#        - Effect: "Allow"
+#          Action:
+#            - "s3:ListBucket"
+#          Resource: { "Fn::Join" : ["", ["arn:aws:s3:::", { "Ref" : "ServerlessDeploymentBucket" } ] ]  }
+#        - Effect: "Allow"
+#          Action:
+#            - "s3:PutObject"
+#          Resource:
+#            Fn::Join:
+#              - ""
+#              - - "arn:aws:s3:::"
+#                - "Ref" : "ServerlessDeploymentBucket"
+#                - "/*"
+
+# you can define service wide environment variables here
+#  environment:
+#    variable1: value1
+
+# you can add packaging information here
+#package:
+#  patterns:
+#    - '!exclude-me.js'
+#    - '!exclude-me-dir/**'
+#    - include-me.js
+#    - include-me-dir/**
+
+functions:
+  hello:
+    handler: handler.hello
+    events:
+      - alb:
+          listenerArn: { Ref: HTTPListener }
+          priority: 1
+          conditions:
+            path: /
+            method:
+               - GET
+
+#    The following are a few example events you can configure
+#    NOTE: Please make sure to change your handler code to work with those events
+#    Check the event documentation for details
+#      - websocket: $connect
+#      - s3: ${env:BUCKET}
+#      - schedule: rate(10 minutes)
+#      - sns: greeter-topic
+#      - stream: arn:aws:dynamodb:region:XXXXXX:table/foo/stream/1970-01-01T00:00:00.000
+#      - alexaSkill: amzn1.ask.skill.xx-xx-xx-xx
+#      - alexaSmartHome: amzn1.ask.skill.xx-xx-xx-xx
+#      - iot:
+#          sql: "SELECT * FROM 'some_topic'"
+#      - cloudwatchEvent:
+#          event:
+#            source:
+#              - "aws.ec2"
+#            detail-type:
+#              - "EC2 Instance State-change Notification"
+#            detail:
+#              state:
+#                - pending
+#      - cloudwatchLog: '/aws/lambda/hello'
+#      - cognitoUserPool:
+#          pool: MyUserPool
+#          trigger: PreSignUp
+#      - alb:
+#          listenerArn: arn:aws:elasticloadbalancing:us-east-1:XXXXXX:listener/app/my-load-balancer/50dc6c495c0c9188/
+#          priority: 1
+#          conditions:
+#            host: example.com
+#            path: /hello
+
+#    Define function environment variables here
+#    environment:
+#      variable2: value2
+
+# you can add CloudFormation resource templates here
+#resources:
+#  Resources:
+#    NewResource:
+#      Type: AWS::S3::Bucket
+#      Properties:
+#        BucketName: my-new-bucket
+#  Outputs:
+#     NewOutput:
+#       Description: "Description for the output"
+#       Value: "Some output value"
+
+resources:
+   Outputs:
+      LoadBalancerDNSName:
+         Value: !GetAtt LoadBalancer.DNSName
+   Resources:
+      SecurityGroup:
+         Type: 'AWS::EC2::SecurityGroup'
+         Properties:
+            GroupName: ${self:service}
+            GroupDescription: 'HTTPS/HTTPS inbound; Nothing outbound'
+            VpcId: "vpc-0da3594720ac8309a" # OBS, https://us-east-1.console.aws.amazon.com/vpc/home?region=us-east-1#subnets:
+            SecurityGroupIngress:
+               -
+                  IpProtocol: tcp
+                  FromPort: '80'
+                  ToPort: '80'
+                  CidrIp: 0.0.0.0/0
+               -
+                  IpProtocol: tcp
+                  FromPort: '443'
+                  ToPort: '443'
+                  CidrIp: 0.0.0.0/0
+            SecurityGroupEgress:
+               -
+                  IpProtocol: -1
+                  FromPort: '1'
+                  ToPort: '1'
+                  CidrIp: 127.0.0.1/32
+      LoadBalancer:
+         Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
+         Properties:
+            Type: 'application'
+            Name: ${self:service}
+            IpAddressType: 'ipv4'
+            Scheme: "internet-facing"
+            LoadBalancerAttributes:
+               - { Key: 'deletion_protection.enabled', Value: false }
+               - { Key: 'routing.http2.enabled', Value: false }
+               - { Key: 'access_logs.s3.enabled', Value: false }
+            SecurityGroups:
+               - { Ref: SecurityGroup }
+            Subnets:
+               - subnet-0033675500dd13a86 # OBS 72.31.32.0/20, https://us-east-1.console.aws.amazon.com/vpc/home?region=us-east-1#subnets: 
+               - subnet-09648f7c4a1013444 # OBS 172.31.0.0/20, https://us-east-1.console.aws.amazon.com/vpc/home?region=us-east-1#subnets:
+      HTTPListener:
+         Type: 'AWS::ElasticLoadBalancingV2::Listener'
+         Properties:
+            LoadBalancerArn: { Ref: LoadBalancer }
+            Port: 80
+            Protocol: 'HTTP'
+            DefaultActions:
+               -
+                  Type: 'fixed-response'
+                  Order: 1
+                  FixedResponseConfig:
+                     StatusCode: 404
+                     ContentType: 'application/json'
+                     MessageBody: '{ "not": "found" }'
+      LoadBalancerParam:
+         Type: "AWS::SSM::Parameter"
+         Properties:
+            Name: "/${self:service}/${self:provider.stage}/LoadBalancerUrl"
+            Type: "String"
+            Value: !GetAtt LoadBalancer.DNSName
+            Description: "loadbalancer url"
